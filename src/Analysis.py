@@ -1,5 +1,4 @@
-
-class ElementalAnalyses:
+class ElementalAnalysis:
     def __init__(self, file):
         pass
 
@@ -9,4 +8,8 @@ class RemFile:
 
 class FileRow(RemFile):
     def __init__(self):
+        pass
+
+class CompoundAnalysis:
+    def init(self):
         pass
