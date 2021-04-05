@@ -119,10 +119,16 @@ def molmass(symbol):
         pass
     compound = parse_compound(symbol)
     molmass_sum = 0
-    for element, count in compound:
-        molmass_sum += molmass(element) * int(count)
+    for element, count in compound.items():
+        molmass_sum += molmass(element) * count
 
     return molmass_sum
+
+class CompoundDict(dict):
+
+    def __missing__(self, key):
+        self[key] = 0
+        return self [key]
 
 def parse_compound(input):
     result = re.findall("([A-Z][a-z]*)([0-9]*)", input)
@@ -131,15 +137,22 @@ def parse_compound(input):
         raise ValueError(f"Invalid input: {input} is neither an Element nor a compound")
 
     teststr = ""
+    compound = CompoundDict()
     for symbol, count in result:
         teststr += symbol+count
+
         if symbol not in ELEMENTS:
             raise ValueError(f"Symbol {symbol} in {input} does not represent an element")
+
+        if not count:
+            count = 1
+
+        compound[symbol] += int(count)
 
     if teststr != input:
         raise ValueError(f"Only parsed {teststr} from {input}")
 
-    return result
+    return compound
 
 
 if __name__ == "__main__":
@@ -164,6 +177,8 @@ if __name__ == "__main__":
 
         def test_correct(self):
             self.assertAlmostEqual(molmass("Fe2O3"), 159.7, 0)
+            self.assertAlmostEqual(molmass("Fe2OOO"), 159.7, 0)
             self.assertAlmostEqual(molmass("Fe"), 55.8, 0)
+            self.assertAlmostEqual(molmass("CaF2"), 78.1, 0)
 
     unittest.main()
