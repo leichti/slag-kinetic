@@ -112,6 +112,11 @@ ELEMENTS = {
     "Mt": 276.1516,
 }
 
+
+def only_elements(mixed_list):
+    return [column for column in mixed_list if column in ELEMENTS]
+
+
 class Molecule(dict):
 
     def __init__(self, input):

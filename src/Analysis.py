@@ -2,13 +2,18 @@ import pandas as pd
 import numpy as np
 from chemical import *
 
+
 class Analysis(dict):
 
     def __init__(self):
         super().__init__()
+        self.name = ""
 
     def normalize(self):
         total = sum(self.values())
+
+        if total == 0:
+            raise ValueError(f"Invalid Analysis {self.name}: {self}")
 
         for key, old_value in self.items():
             self[key] = old_value/total
@@ -16,7 +21,7 @@ class Analysis(dict):
 
 class ElementalAnalysis(Analysis):
 
-    def __init__(self, data, name=None, as_wt=True):
+    def __init__(self, data, name=None, as_wt=True, drop=[]):
         """
         represents one elemental analysis.
         If data comes as wt.-% it is recalculated to mol.-%.
@@ -33,46 +38,54 @@ class ElementalAnalysis(Analysis):
         else:
             self.from_mol(data)
 
+        for element in drop:
+            del(self[element])
         self.normalize()
 
     def from_wt(self, input):
         for element, wt in input.items():
+            wt = 0 if np.isnan(wt) else wt
             self[element] = wt/Element(element).mass
 
         return input
 
     def from_mol(self, input):
         for element, mol in input.items():
+            mol = 0 if np.isnan(mol) else mol
             self[element] = mol
 
 
-class PhaseAnalysis(Analysis):
+class PhaseConstructor():
+    # when recalculating we consider phases in their order
+    # check which element of the phase is limiting
+    # e.g. CaO requires 1mol Ca and 1mol O. If 2 mol Ca and 3 mol O are available,
+    # then Ca is limiting. We can create 2 mol CaO,
+    # with 1 mol O remaining in the element pool
+    # if one of the elements is in the "ignore" lookup, we don't subtract it
+    #
+    # after all phases have been produced, we check if all mols from the
+    # mol pool have been harvested. If not an exception is thrown
+    # Except for elements from the ignore list, they don't need to be harvested
 
-    def __init__(self, elemental_analysis, phases, ignore=[]):
-        self.element_pool = elemental_analysis
+    def __init__(self, phases, ignore=[]):
         self.ignore = ignore
+        self.phases = phases
+        self.element_pool = ElementalAnalysis
 
-        # when recalculating we consider phases in their order
-        # check which element of the phase is limiting
-        # e.g. CaO requires 1mol Ca and 1mol O. If 2 mol Ca and 3 mol O are available,
-        # then Ca is limiting. We can create 2 mol CaO,
-        # with 1 mol O remaining in the element pool
-        # if one of the elements is in the "ignore" lookup, we don't subtract it
-        #
-        # after all phases have been produced, we check if all mols from the
-        # mol pool have been harvested. If not an exception is thrown
-        # Except for elements from the ignore list, they don't need to be harvested
-        for phase in phases:
+    def parse(self, element_analysis: ElementalAnalysis):
+        self.element_pool = element_analysis.copy()
+        phase_analysis = PhaseAnalysis()
+
+        for phase in self.phases:
             phase = Molecule(phase)
-            self.build(phase)
+            self.build(phase, phase_analysis)
 
         self.check_harvest()
+        phase_analysis.normalize()
 
-        self.normalize()
+        return phase_analysis
 
-    def build(self, phase):
-        # check how much moles we can build
-        possible_moles = None
+    def build(self, phase, phase_analysis):
         limit = self.build_limit(phase)
 
         for element, count in phase.items():
@@ -81,21 +94,16 @@ class PhaseAnalysis(Analysis):
 
             self.element_pool[element] -= limit*count
 
-        self[str(phase)] = limit
-
-    def check_harvest(self):
-        if (total := sum(self.element_pool.values())) != 0:
-            raise ValueError(f"Please mark unused values as ignore. "
-                             f"There are still {total} moles in the element pool."
-                             f"{self.element_pool}")
+        phase_analysis[str(phase)] = limit
 
     def build_limit(self, phase):
+        # check how much moles we can build
         possible_moles = None
         for element, count in phase.items():
             if element in self.ignore:
                 continue
             try:
-                possible_from_element = self.element_pool[element]/count
+                possible_from_element = self.element_pool[element] / count
             except KeyError:
                 possible_from_element = 0
                 print(f"Element {element} not found in elemental analysis")
@@ -107,9 +115,38 @@ class PhaseAnalysis(Analysis):
 
         return possible_moles
 
-class SemFileParser:
+    def check_harvest(self):
+        ignored_sum = 0
+        for element in self.ignore:
+            ignored_sum += self.element_pool[element]
 
-    def __init__(self, path: str):
+        if (total := sum(self.element_pool.values())-ignored_sum) != 0:
+            raise ValueError(f"Please mark unused values as ignore. "
+                             f"There are still {total} moles in the element pool."
+                             f"{self.element_pool}")
+
+
+class PhaseAnalysis(Analysis):
+
+    def __init__(self):
+        super().__init__()
+
+
+class FileParser:
+
+    def __init__(self, path: str, **kwargs):
+
+        (self.filename, self.ext), *_ = re.findall("(.*)\.([A-Za-z0-9]+$)", path)
+        self.df = None
+
+        if self.ext in ["xls", "xlsx"]:
+            self.load_excel()
+        else:
+            raise ValueError(f"Format {self.ext} not supported yet")
+
+
+class ElementalAnalysesFile(FileParser):
+    def __init__(self, path):
         """
         Reads a tabular file, each row representing one elemental analysis.
         A Rows object creates and stores an ElementalAnalysis object for each row.
@@ -119,39 +156,102 @@ class SemFileParser:
                      ----------|-------------|-------|---------
                      Sample i  |    wt.-%    |  ...  | wt.%
         """
+        super().__init__(path)
 
-        (filename, ext), *_ = re.findall("(.*)\.([A-Za-z0-9]+$)", path)
+        self.elements = only_elements(self.df.columns)
+        self.data = self.df[self.elements].to_numpy()
 
-        if ext in ["xls", "xlsx"]:
-            df = pd.read_excel(f"{filename}.{ext}", engine="openpyxl", index_col=0)
-        else:
-            raise ValueError(f"Format {ext} not supported yet")
+    def load_excel(self):
+        self.df = pd.read_excel(f"{self.filename}.{self.ext}", engine="openpyxl", index_col=0)
 
-        columns = [column for column in df.columns if column in ELEMENTS]
-        data = df[columns].to_numpy()
+    def phased(self, phase_constructor: PhaseConstructor):
+        rows = AnalysesOrganizer(phase_constructor.phases)
 
-        self.rows = Rows(columns)
-        for name, row_data in zip(df.index, data):
-            self.rows.add(row_data, name)
+        for name, row_data in zip(self.df.index, self.data):
+            row_data = ElementalAnalysis(dict(zip(self.elements, row_data)), name)
+            row_data = phase_constructor.parse(row_data)
+            rows.add(row_data, name)
+
+        return rows
+
+    def elemental(self):
+        rows = AnalysesOrganizer(self.elements)
+        for name, row_data in zip(self.df.index, self.data):
+            row_data = ElementalAnalysis(row_data, name)
+            rows.add(row_data, name)
+
+        return rows
 
 
-class Rows(dict):
+class InfoOrganizer(FileParser):
+
+    def __init__(self, path, lookup_col, read_cols):
+        super().__init__(path)
+
+        if lookup_col not in self.df.columns:
+            raise KeyError(f"Given file {path} has no lookup column {lookup_col}")
+
+        for column in read_cols:
+            if column not in self.df.columns:
+                raise KeyError(f"Given file {path} misses column {column}")
+
+        self.df.index = self.df[lookup_col]
+        self.data = self.df[read_cols].to_dict("index")
+
+    def load_excel(self):
+        self.df = pd.read_excel(f"{self.filename}.{self.ext}", engine="openpyxl")
+
+    def get(self, key):
+        if key in self.data.keys():
+            return self.data[key]
+
+        return self.data["default"]
+
+
+class AnalysesOrganizer(dict):
 
     def __init__(self, columns):
         self.columns = columns
 
+    def __missing__(self, sample):
+        self[sample] = SampleOrganizer()
+        return self[sample]
+
     def add(self, data, name):
-        data = dict(zip(self.columns, data))
-        self[name].append(ElementalAnalysis(data, self.columns))
+        self[name].append(data)
+
+    def informal(self, info_organizer):
+        # info organizer has a get method that returns a dict with information
+        # for the given index/key
+        for sample in self.keys():
+            self[sample].informal = info_organizer.get(sample)
+        pass
+
+
+class SampleOrganizer(dict):
+
+    def __init__(self):
+        # @todo implement as numpy array! Now, data comes in dict-form..
+        # @todo or maybe implement a generator
+        self.same_sample = list()
+        self.informal = dict()
 
     def __missing__(self, key):
-        self[key] = list()
-        return self[key]
+        if key in self.informal.keys():
+            return self.informal[key]
+
+        total = 0
+        for i, sample in enumerate(self.same_sample, 1):
+            total += sample[key]
+
+        return total/i
+
+    def append(self, data):
+        self.same_sample.append(data)
 
 
 if __name__ == "__main__":
     #file = SemFileParser("../example/data/sem.xlsx")
-    #recalc = CompoundParser(ElementalAnalysis(data), ["Ca2F", "K2O", "CaO", "SiO2", "Al2O3", "ZnO", "FeO"], ["O", "C"])
 
 
     import unittest
@@ -159,26 +259,62 @@ if __name__ == "__main__":
     class MyTestCase(unittest.TestCase):
 
         def setUp(self):
-            self.data = {"Ca": 10, "Si": 5, "Al": 1}
+            self.data = {
+                "C": 16.6, "O": 35.65, "F": 7.14,
+                "Na": 0.3, "Mg": 0.3, "Al": 5.2,
+                "Si": 11.97, "K": 0.47, "Ca": 21.87,
+                "Fe": 0.12, "Zn": 0.39}
+            self.analysis = ElementalAnalysis(self.data, drop=["C"])
 
         def test_elemental_analysis(self):
-            analysis = ElementalAnalysis(self.data)
-            self.assertAlmostEqual(analysis["Ca"], 0.537, 2)
-            self.assertAlmostEqual(analysis["Si"], 0.383, 2)
-            self.assertAlmostEqual(analysis["Al"], 0.080, 2)
+            analysis = self.analysis
+            self.assertAlmostEqual(analysis["O"], 0.58419, 4)
+            self.assertAlmostEqual(analysis["Si"], 0.111739334, 4)
+            self.assertAlmostEqual(analysis["F"], 0.098531525, 4)
+
 
         def test_elemental_analysis_mol(self):
             analysis = ElementalAnalysis(self.data, as_wt=False)
-            self.assertAlmostEqual(analysis["Ca"], 0.625, 2)
+            #self.assertAlmostEqual(analysis["Ca"], 0.625, 2)
 
 
         def test_simple_recalculation(self):
-            analysis = ElementalAnalysis(self.data)
-            phase_analysis = PhaseAnalysis(elemental_analysis=analysis, phases=["CaO", "SiO2", "Al2O3", "SiAl"], ignore=["O"])
-            # todo get manually calculated data to check!
-            self.assertAlmostEqual(phase_analysis["CaO"], 0, 2)
-            self.assertAlmostEqual(phase_analysis["SiO2"], 0, 2)
-            self.assertAlmostEqual(phase_analysis["Al2O3"], 0, 2)
-            self.assertAlmostEqual(phase_analysis["SiAl"], 0)
+            analysis = self.analysis
+            phase_analysis = PhaseConstructor(
+                                           phases=["CaF2", "CaO",
+                                                   "SiO2", "Al2O3",
+                                                   "MgO", "Na2O",
+                                                   "K2O", "FeO",
+                                                   "ZnO"],
+                                           ignore=["O"]).parse(analysis)
+
+            self.assertAlmostEqual(phase_analysis["CaO"], 0.324884446, 4)
+            self.assertAlmostEqual(phase_analysis["CaF2"], 0.170635578, 4)
+            self.assertAlmostEqual(phase_analysis["Al2O3"], 0.087503434, 4)
+            self.assertAlmostEqual(phase_analysis["FeO"], 0.001951261, 4)
+
+    class MyFileTestCase(unittest.TestCase):
+
+        def setUp(self):
+            phase_constructor = PhaseConstructor(phases=["CaF2", "CaO", "SiO2",
+                                                         "Al2O3", "MgO", "Na2O",
+                                                         "K2O", "FeO", "ZnO"],
+                                                 ignore=["O", "C"])
+            self.data = ElementalAnalysesFile("../example/data/sem.xlsx").phased(phase_constructor)
+
+        def test_loading(self):
+            self.assertAlmostEqual(self.data["V29P12"]["CaO"], 0.31590732, 5)
+            self.assertAlmostEqual(self.data["V29P12"]["CaF2"], 0.170899339, 5)
+            self.assertAlmostEqual(self.data["V29P12"]["SiO2"], 0.392776275, 5)
+
+        def test_informal(self):
+            info_organizer = InfoOrganizer("../example/data/info.xlsx", "sample", ["time", "initial mass"])
+            self.data.informal(info_organizer)
+            self.assertAlmostEqual(self.data["V29P12"]["time"], 75, 5)
+            self.assertAlmostEqual(self.data["V29P12"]["initial mass"], 2200, 5)
+            self.assertAlmostEqual(self.data["V28P0"]["time"], 0, 5)
+            self.assertAlmostEqual(self.data["V18P1"]["time"], 0, 5)
+            self.assertAlmostEqual(self.data["V18P1"]["initial mass"], 0, 5)
+
 
     unittest.main()
