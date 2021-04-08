@@ -6,29 +6,47 @@ from chemical import *
 class Analysis(dict):
 
     def __init__(self):
+        """
+            Base class of analysis based on python's dict
+            inheriting basic functionality like normalize
+            to PhaseAnalysis and ElementalAnalysis.
+        """
         super().__init__()
         self.name = ""
 
-    def normalize(self):
+    def normalize(self, to=1):
+        """
+            Normalizes the analysis to a specified value
+
+        Parameters
+        ----------
+        to : float the sum of all values in the analysis after normalization
+        """
         total = sum(self.values())
 
         if total == 0:
             raise ValueError(f"Invalid Analysis {self.name}: {self}")
 
         for key, old_value in self.items():
-            self[key] = old_value/total
+            self[key] = old_value/total*to
 
 
 class ElementalAnalysis(Analysis):
 
     def __init__(self, data, name=None, as_wt=True, drop=[]):
         """
-        represents one elemental analysis.
+        ElementalAnalysis represents one chemical analysis in elemental form.
         If data comes as wt.-% it is recalculated to mol.-%.
         After loading, analysis is normalized to 1
-        :param data: dict analyses of the sample that is represented {"Element" : amount}
-        :param name: str name of the sample that is represented
-        :param as_wt: data comes as wt.-%
+        @todo add possibility to transform between mol-% and wt.-%
+
+        Parameters
+        ----------
+        data : dict analyses of the sample that is represented {"Element" : amount}
+        name : str name of the sample. Can be helpful while debugging
+        as_wt : boolean defines if parsed data comes as wt.-% or mol.-%
+        drop : list elements that will be dropped during initialization. May be used
+        for elements that are analyzed inaccurate like  C or O in the EDX
         """
         super().__init__()
         self.name = name
@@ -40,39 +58,70 @@ class ElementalAnalysis(Analysis):
 
         for element in drop:
             del(self[element])
+
         self.normalize()
 
-    def from_wt(self, input):
-        for element, wt in input.items():
+    def from_wt(self, data):
+        """
+        Parses data and assumes it to be given as wt.-%
+        Empty data-values (nan values) are set to 0. Otherwise
+        functionality like normalizing may be broken
+
+        Parameters
+        ----------
+        data : dict or dict-like
+        """
+        for element, wt in data.items():
             wt = 0 if np.isnan(wt) else wt
             self[element] = wt/Element(element).mass
 
-        return input
+    def from_mol(self, data):
+        """
+        Parses data and assumes it to be given as mol.-%.
+        Empty data-values (nan values) are set to 0. Otherwise
+        functionality like normalizing may be broken
 
-    def from_mol(self, input):
-        for element, mol in input.items():
+        Parameters
+        ----------
+        data :
+        """
+        for element, mol in data.items():
             mol = 0 if np.isnan(mol) else mol
             self[element] = mol
 
 
-class PhaseConstructor():
-    # when recalculating we consider phases in their order
-    # check which element of the phase is limiting
-    # e.g. CaO requires 1mol Ca and 1mol O. If 2 mol Ca and 3 mol O are available,
-    # then Ca is limiting. We can create 2 mol CaO,
-    # with 1 mol O remaining in the element pool
-    # if one of the elements is in the "ignore" lookup, we don't subtract it
-    #
-    # after all phases have been produced, we check if all mols from the
-    # mol pool have been harvested. If not an exception is thrown
-    # Except for elements from the ignore list, they don't need to be harvested
+class PhaseConstructor:
 
     def __init__(self, phases, ignore=[]):
+        """
+        PhaseConstructor mathematically derives chemical compounds from an elemental analysis.
+        Building compounds consumes molecules from the element pool (which is an ElementalAnalysis)
+        The order in which the phases are given defines which compounds are build first (first->first).
+
+        Parameters
+        ----------
+        phases : list of compound names that will be builded.
+        ignore : list of elements that will not get consumed during phase-building.
+                 This is helpful for inaccurate analyzed elements like C and O in the EDX
+        """
         self.ignore = ignore
         self.phases = phases
         self.element_pool = ElementalAnalysis
 
-    def parse(self, element_analysis: ElementalAnalysis):
+    def parse(self, element_analysis, normalize=1):
+        """
+        Parses a PhaseAnalysis based on the defined phases in the phases attribute
+
+        Parameters
+        ----------
+        element_analysis : ElementalAnalysis used as element pool to determine how much of
+                           each chemical compound can be build
+        normalize : float result is normalized to the given number (default 1)
+
+        Returns
+        -------
+        PhaseAnalysis instance with the calculated composition
+        """
         self.element_pool = element_analysis.copy()
         phase_analysis = PhaseAnalysis()
 
@@ -81,11 +130,23 @@ class PhaseConstructor():
             self.build(phase, phase_analysis)
 
         self.check_harvest()
-        phase_analysis.normalize()
+        if normalize:
+            phase_analysis.normalize()
 
         return phase_analysis
 
     def build(self, phase, phase_analysis):
+        """
+        Builds the chemical compound  phase and subtracts required elements from the element pool
+        (except for elements that are flagged as ignored)
+
+        Parameters
+        ----------
+        phase : Molecule
+            representing one chemical compound (e.g. Al2O3, CaO or SiO2)
+        phase_analysis : PhaseAnalysis
+            Phase analysis to which the phase is added
+        """
         limit = self.build_limit(phase)
 
         for element, count in phase.items():
@@ -97,6 +158,18 @@ class PhaseConstructor():
         phase_analysis[str(phase)] = limit
 
     def build_limit(self, phase):
+        """
+        Calculates maximum moles that can be build for the given phase based on the remaining element pool
+
+        Parameters
+        ----------
+        phase : Molecule
+            Phase from which the limit is calculated
+
+        Returns
+        -------
+        float result of calculation
+        """
         # check how much moles we can build
         possible_moles = None
         for element, count in phase.items():
@@ -116,6 +189,10 @@ class PhaseConstructor():
         return possible_moles
 
     def check_harvest(self):
+        """
+        Short check if the element pool was completely used. If the element pool
+        still contains (not ignored) elements, compounds have been left behind.
+        """
         ignored_sum = 0
         for element in self.ignore:
             ignored_sum += self.element_pool[element]
@@ -129,13 +206,26 @@ class PhaseConstructor():
 class PhaseAnalysis(Analysis):
 
     def __init__(self):
+        """
+        Inherits from Analysis base class. Not a lot of use yet.
+        Helps determining if an analysis is either elemental or phase-based.
+        """
         super().__init__()
 
 
 class FileParser:
 
-    def __init__(self, path: str, **kwargs):
+    def __init__(self, path: str):
+        """
+        Determines the file type by the extension of the given path and
+        calls based on that the relevant loading functions implemented in
+        child classes of FileParser.
 
+        Parameters
+        ----------
+        path : str
+            relative or absolute path to file that should be loaded
+        """
         (self.filename, self.ext), *_ = re.findall("(.*)\.([A-Za-z0-9]+$)", path)
         self.df = None
 
@@ -149,12 +239,14 @@ class ElementalAnalysesFile(FileParser):
     def __init__(self, path):
         """
         Reads a tabular file, each row representing one elemental analysis.
-        A Rows object creates and stores an ElementalAnalysis object for each row.
+        Name_col  |  Element_1  |  ...  |Element_i
+        ----------|-------------|-------|---------
+        Sample i  |    wt.-%    |  ...  | wt.%
 
-        :param path: path to file containing sem edx data in the following form
-                     Name_col  |  Element_1  |  ...  |Element_i
-                     ----------|-------------|-------|---------
-                     Sample i  |    wt.-%    |  ...  | wt.%
+        Parameters
+        ----------
+        path : str
+            path to the file
         """
         super().__init__(path)
 
@@ -162,9 +254,24 @@ class ElementalAnalysesFile(FileParser):
         self.data = self.df[self.elements].to_numpy()
 
     def load_excel(self):
+        """
+            Loads data from an excel file. Usually called by the Parent's __init__() method
+        """
         self.df = pd.read_excel(f"{self.filename}.{self.ext}", engine="openpyxl", index_col=0)
 
-    def phased(self, phase_constructor: PhaseConstructor):
+    def phased(self, phase_constructor):
+        """
+        Calculates phase analyses for all analyses in the file storing the rows
+        in an AnalysesOrganizer object.
+
+        Parameters
+        ----------
+        phase_constructor : PhaseConstructor
+
+        Returns
+        -------
+        The phase analyses as AnalysesOrganizer object
+        """
         rows = AnalysesOrganizer(phase_constructor.phases)
 
         for name, row_data in zip(self.df.index, self.data):
@@ -175,6 +282,14 @@ class ElementalAnalysesFile(FileParser):
         return rows
 
     def elemental(self):
+        """
+        Calculates elemental analyses for all analyses in the file storing the rows
+        in an AnalysesOrganizer object.
+
+        Returns
+        -------
+        The elemental analyses as AnalysesOrganizer object
+        """
         rows = AnalysesOrganizer(self.elements)
         for name, row_data in zip(self.df.index, self.data):
             row_data = ElementalAnalysis(row_data, name)
@@ -186,6 +301,14 @@ class ElementalAnalysesFile(FileParser):
 class InfoOrganizer(FileParser):
 
     def __init__(self, path, lookup_col, read_cols):
+        """
+        Reads additional information for analyses from a lookup table
+        Parameters
+        ----------
+        path :
+        lookup_col :
+        read_cols :
+        """
         super().__init__(path)
 
         if lookup_col not in self.df.columns:
