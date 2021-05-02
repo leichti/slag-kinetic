@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-from chemical import *
+import re
+from nemlib.chemical import Molecule, Element, only_elements
 
 
 class Analysis(dict):
@@ -33,7 +34,7 @@ class Analysis(dict):
 
 class ElementalAnalysis(Analysis):
 
-    def __init__(self, data, name=None, as_wt=True, drop=[]):
+    def __init__(self, data, name=None, as_wt=True, drop=None, normalize_to=1):
         """
         ElementalAnalysis represents one chemical analysis in elemental form.
         If data comes as wt.-% it is recalculated to mol.-%.
@@ -43,13 +44,16 @@ class ElementalAnalysis(Analysis):
         Parameters
         ----------
         data : dict analyses of the sample that is represented {"Element" : amount}
-        name : str name of the sample. Can be helpful while debugging
+        name : str element of the sample. Can be helpful while debugging
         as_wt : boolean defines if parsed data comes as wt.-% or mol.-%
         drop : list elements that will be dropped during initialization. May be used
         for elements that are analyzed inaccurate like  C or O in the EDX
         """
         super().__init__()
         self.name = name
+
+        if drop is None:
+            drop = []
 
         if as_wt:
             self.from_wt(data)
@@ -59,7 +63,7 @@ class ElementalAnalysis(Analysis):
         for element in drop:
             del(self[element])
 
-        self.normalize()
+        self.normalize(normalize_to)
 
     def from_wt(self, data):
         """
@@ -92,7 +96,7 @@ class ElementalAnalysis(Analysis):
 
 class PhaseConstructor:
 
-    def __init__(self, phases, ignore=[]):
+    def __init__(self, phases, ignore):
         """
         PhaseConstructor mathematically derives chemical compounds from an elemental analysis.
         Building compounds consumes molecules from the element pool (which is an ElementalAnalysis)
@@ -100,10 +104,13 @@ class PhaseConstructor:
 
         Parameters
         ----------
-        phases : list of compound names that will be builded.
+        phases : list of compound names that will be build.
         ignore : list of elements that will not get consumed during phase-building.
                  This is helpful for inaccurate analyzed elements like C and O in the EDX
         """
+        if ignore is None:
+            ignore = []
+
         self.ignore = ignore
         self.phases = phases
         self.element_pool = ElementalAnalysis
@@ -226,13 +233,19 @@ class FileParser:
         path : str
             relative or absolute path to file that should be loaded
         """
-        (self.filename, self.ext), *_ = re.findall("(.*)\.([A-Za-z0-9]+$)", path)
+        (self.filename, self.ext), *_ = re.findall(r"(.*)\.([A-Za-z0-9]+$)", path)
         self.df = None
 
         if self.ext in ["xls", "xlsx"]:
             self.load_excel()
         else:
             raise ValueError(f"Format {self.ext} not supported yet")
+
+    def load_excel(self):
+        """
+        Interface method to enforce implementation in child classes.
+        """
+        raise NotImplementedError("Method load_excel not implemented in the parser")
 
 
 class ElementalAnalysesFile(FileParser):
@@ -253,9 +266,18 @@ class ElementalAnalysesFile(FileParser):
         self.elements = only_elements(self.df.columns)
         self.data = self.df[self.elements].to_numpy()
 
+    def __len__(self):
+        """
+
+        Returns number of rows parsed from the file
+        -------
+
+        """
+        return len(self.data)
+
     def load_excel(self):
         """
-            Loads data from an excel file. Usually called by the Parent's __init__() method
+        Loads data from an excel file. Called by the Parent's __init__() method
         """
         self.df = pd.read_excel(f"{self.filename}.{self.ext}", engine="openpyxl", index_col=0)
 
@@ -319,12 +341,27 @@ class InfoOrganizer(FileParser):
                 raise KeyError(f"Given file {path} misses column {column}")
 
         self.df.index = self.df[lookup_col]
+        self.df = self.df.loc[self.df.index.dropna()]
         self.data = self.df[read_cols].to_dict("index")
 
     def load_excel(self):
+        """
+        Loads data from an excel file as pd.DataFrame using pandas' read_excel method
+        """
         self.df = pd.read_excel(f"{self.filename}.{self.ext}", engine="openpyxl")
 
     def get(self, key):
+        """
+
+        Parameters
+        ----------
+        key : the index where data should be read from. If the element can't be found in the index,
+              a default value from default row is used.
+
+        Returns the found data set as dictionary
+        -------
+
+        """
         if key in self.data.keys():
             return self.data[key]
 
@@ -334,32 +371,81 @@ class InfoOrganizer(FileParser):
 class AnalysesOrganizer(dict):
 
     def __init__(self, columns):
-        self.columns = columns
+        """
+        Organizes multiple samples. Each sample is saved as a row in a table-like form.
+        """
+        super(AnalysesOrganizer, self).__init__()
 
     def __missing__(self, sample):
+        """
+        Handles read action on missing rows. Creates, saves and returns an empty SampleOrganizer
+
+        Parameters
+        ----------
+        sample : str identifier of a sample. E.g. V29P11
+
+        Returns an empty SampleOrganizer
+        -------
+
+        """
         self[sample] = SampleOrganizer()
         return self[sample]
 
-    def add(self, data, name):
-        self[name].append(data)
+    def add(self, data, sample):
+        """
+        Adds data for a given sample. Saved as a list to handle multiple different analyses for the same sample.
+
+        Parameters
+        ----------
+        data : Analysis for a sample. Multiple analyses per sample are possible. E.g. 3xSEM-EDX to reduce the
+        influence of inhomogeneous samples
+        sample : str identifier of the sample. E.g. V29P11
+        """
+        self[sample].append(data)
 
     def informal(self, info_organizer):
-        # info organizer has a get method that returns a dict with information
-        # for the given index/key
+        """
+        Adds information from InfoOrganizer into the AnalysesOrganizer. E.g. time at which the samples were taken.
+        Informational columns must have a different element from existing elements/phases.
+
+        Parameters
+        ----------
+        info_organizer : InfoOrganizer holding the data as a lookup table
+        """
         for sample in self.keys():
             self[sample].informal = info_organizer.get(sample)
-        pass
+
+        for informal_key in self[sample].informal.keys():
+            sample_keys = self[sample].phases()
+            if informal_key in sample_keys:
+                raise KeyError(f"Key {informal_key} is already present and can't be used as informal element")
 
 
 class SampleOrganizer(dict):
 
     def __init__(self):
-        # @todo implement as numpy array! Now, data comes in dict-form..
-        # @todo or maybe implement a generator
+        """
+        Organizes multiple analyses for the same sample. Standard behavior: Returns the information from the
+        informal dict or calculates the average value for a given element/compound
+        @todo maybe some speed improvements are required in future. Current implementation is slow.
+        """
+        super(SampleOrganizer, self).__init__()
+
         self.same_sample = list()
         self.informal = dict()
 
     def __missing__(self, key):
+        """
+        Checks if element represents an informal column or if it is the element of a phase or an element.
+
+        Parameters
+        ----------
+        key : str element of informal column or phase/element from which the data should be return.
+
+        Returns the corresponding value of the given element. Returns 0 for non-existing keys.
+        -------
+
+        """
         if key in self.informal.keys():
             return self.informal[key]
 
@@ -370,74 +456,28 @@ class SampleOrganizer(dict):
         return total/i
 
     def append(self, data):
+        """
+
+        Parameters
+        ----------
+        data : Analysis inserting an analysis to the SampleOrganizer
+        """
         self.same_sample.append(data)
 
+    def phases(self):
+        """
 
-if __name__ == "__main__":
-    #file = SemFileParser("../example/data/sem.xlsx")
+        Returns the phase names
+        -------
+        dict_keys
+        """
+        return self.same_sample[0].keys()
 
+    def informal_keys(self):
+        """
 
-    import unittest
-
-    class MyTestCase(unittest.TestCase):
-
-        def setUp(self):
-            self.data = {
-                "C": 16.6, "O": 35.65, "F": 7.14,
-                "Na": 0.3, "Mg": 0.3, "Al": 5.2,
-                "Si": 11.97, "K": 0.47, "Ca": 21.87,
-                "Fe": 0.12, "Zn": 0.39}
-            self.analysis = ElementalAnalysis(self.data, drop=["C"])
-
-        def test_elemental_analysis(self):
-            analysis = self.analysis
-            self.assertAlmostEqual(analysis["O"], 0.58419, 4)
-            self.assertAlmostEqual(analysis["Si"], 0.111739334, 4)
-            self.assertAlmostEqual(analysis["F"], 0.098531525, 4)
-
-
-        def test_elemental_analysis_mol(self):
-            analysis = ElementalAnalysis(self.data, as_wt=False)
-            #self.assertAlmostEqual(analysis["Ca"], 0.625, 2)
-
-
-        def test_simple_recalculation(self):
-            analysis = self.analysis
-            phase_analysis = PhaseConstructor(
-                                           phases=["CaF2", "CaO",
-                                                   "SiO2", "Al2O3",
-                                                   "MgO", "Na2O",
-                                                   "K2O", "FeO",
-                                                   "ZnO"],
-                                           ignore=["O"]).parse(analysis)
-
-            self.assertAlmostEqual(phase_analysis["CaO"], 0.324884446, 4)
-            self.assertAlmostEqual(phase_analysis["CaF2"], 0.170635578, 4)
-            self.assertAlmostEqual(phase_analysis["Al2O3"], 0.087503434, 4)
-            self.assertAlmostEqual(phase_analysis["FeO"], 0.001951261, 4)
-
-    class MyFileTestCase(unittest.TestCase):
-
-        def setUp(self):
-            phase_constructor = PhaseConstructor(phases=["CaF2", "CaO", "SiO2",
-                                                         "Al2O3", "MgO", "Na2O",
-                                                         "K2O", "FeO", "ZnO"],
-                                                 ignore=["O", "C"])
-            self.data = ElementalAnalysesFile("../example/data/sem.xlsx").phased(phase_constructor)
-
-        def test_loading(self):
-            self.assertAlmostEqual(self.data["V29P12"]["CaO"], 0.31590732, 5)
-            self.assertAlmostEqual(self.data["V29P12"]["CaF2"], 0.170899339, 5)
-            self.assertAlmostEqual(self.data["V29P12"]["SiO2"], 0.392776275, 5)
-
-        def test_informal(self):
-            info_organizer = InfoOrganizer("../example/data/info.xlsx", "sample", ["time", "initial mass"])
-            self.data.informal(info_organizer)
-            self.assertAlmostEqual(self.data["V29P12"]["time"], 75, 5)
-            self.assertAlmostEqual(self.data["V29P12"]["initial mass"], 2200, 5)
-            self.assertAlmostEqual(self.data["V28P0"]["time"], 0, 5)
-            self.assertAlmostEqual(self.data["V18P1"]["time"], 0, 5)
-            self.assertAlmostEqual(self.data["V18P1"]["initial mass"], 0, 5)
-
-
-    unittest.main()
+        Returns names of the informal columns
+        -------
+        dict_keys
+        """
+        return self.informal.keys()
