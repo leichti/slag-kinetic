@@ -1,7 +1,7 @@
 import unittest
 from nemlib.analysis import PhaseConstructor, ElementalAnalysesFile, InfoOrganizer
 from nemlib.trial import SlagReductionTrial, VxPySelector
-from nemlib.model import SingleCompoundModel
+from nemlib.model import SingleCompoundModel, TracerCompoundsCalculator
 
 phase_constructor = PhaseConstructor(phases=["CaF2", "CaO", "SiO2",
                                              "Al2O3", "MgO", "Na2O",
@@ -17,6 +17,11 @@ class ModelTest(unittest.TestCase):
     def test_zn_model_fits(self):
         trial = SlagReductionTrial(VxPySelector("V29")(phased_data))
         trial.drop(0)
+
+        TracerCompoundsCalculator(trial, ["CaO", "SiO2", "Al2O3", "MgO", "CaF2", "K2O", "Na2O"])
+
+
+        return
 
         model = SingleCompoundModel(time="time", compound="ZnO",
                                    start_substance_amount=2500, diameter=200)

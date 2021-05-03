@@ -1,3 +1,10 @@
+"""
+Only data handling and organization.
+No chemical/physical logic.
+"""
+from nemlib.analysis import PhaseAnalysis
+
+
 class Selector(dict):
     def __init__(self):
         """
@@ -9,7 +16,7 @@ class Selector(dict):
 class VxPySelector(Selector):
     def __init__(self, selected_id):
         """
-        Selects all samples from trial Vx where the sample identifier column has a VxPy as naming convention.
+        Selects all samples from trial Vx where the sample_idx identifier column has a VxPy as naming convention.
 
         Parameters
         ----------
@@ -143,7 +150,7 @@ class Trial(dict):
 
     def drop(self, sample_id):
         """
-        Drops a row. E.g. a sample is contaminated and can't be used for evaluation. Or sampling starts too early.
+        Drops a row. E.g. a sample_idx is contaminated and can't be used for evaluation. Or sampling starts too early.
 
         Parameters
         ----------
@@ -164,9 +171,23 @@ class Trial(dict):
 
         for key in info.keys():
             if key in self.keys():
-                raise KeyError(f"Can't add trial info column {key} that is already present as sample column.")
+                raise KeyError(f"Can't add trial info column {key} that is already present as sample_idx column.")
 
         self.info = info
+
+    def sample(self, sample_idx, limit_to=None):
+
+        if limit_to is None:
+            for k in self.keys():
+                yield k, self[k][sample_idx]
+            return
+
+        for k in limit_to:
+            yield k, self[k][sample_idx]
+
+    def sample_analysis(self, sample_idx, limit_to=None):
+        return PhaseAnalysis(self.sample(sample_idx, limit_to))
+
 
 
 class SlagReductionTrial(Trial):

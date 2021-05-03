@@ -44,20 +44,69 @@ class AnalysisTestCase(unittest.TestCase):
                     "ZnO"],
             ignore=["O"]).parse(analysis)
 
-        self.assertAlmostEqual(phase_analysis["CaO"], 0.324884446, 4)
-        self.assertAlmostEqual(phase_analysis["CaF2"], 0.170635578, 4)
-        self.assertAlmostEqual(phase_analysis["Al2O3"], 0.087503434, 4)
-        self.assertAlmostEqual(phase_analysis["FeO"], 0.001951261, 4)
+        self.assertAlmostEqual(phase_analysis["CaO"], 0.324884446, 7)
+        self.assertAlmostEqual(phase_analysis["CaF2"], 0.170635578, 7)
+        self.assertAlmostEqual(phase_analysis["Al2O3"], 0.087503434, 7)
+        self.assertAlmostEqual(phase_analysis["FeO"], 0.001951261, 7)
+
+    def test_phase_analysis_as_wt(self):
+        analysis = ElementalAnalysis(self.data, drop=["C"])
+        phase_analysis = PhaseConstructor(
+            phases=["CaF2", "CaO",
+                    "SiO2", "Al2O3",
+                    "MgO", "Na2O",
+                    "K2O", "FeO",
+                    "ZnO"],
+            ignore=["O"]).parse(analysis)
+
+        phase_analysis.to_wt()
+
+        self.assertAlmostEqual(phase_analysis["CaO"], 0.277593705, 6)
+        self.assertAlmostEqual(phase_analysis["CaF2"], 0.202989364, 6)
+        self.assertAlmostEqual(phase_analysis["Al2O3"], 0.135941863, 6)
+        self.assertAlmostEqual(phase_analysis["FeO"], 0.002136, 6)
+
+    def test_phase_analysis_double_conversion(self):
+        analysis = ElementalAnalysis(self.data, drop=["C"])
+        phase_analysis = PhaseConstructor(
+            phases=["CaF2", "CaO",
+                    "SiO2", "Al2O3",
+                    "MgO", "Na2O",
+                    "K2O", "FeO",
+                    "ZnO"],
+            ignore=["O"]).parse(analysis)
+
+        self.assertAlmostEqual(phase_analysis["CaO"], 0.324884446, 6)
+        phase_analysis.to_wt()
+        self.assertAlmostEqual(phase_analysis["CaO"], 0.277593705, 6)
+        phase_analysis.to_mol()
+        self.assertAlmostEqual(phase_analysis["CaO"], 0.324884446, 6)
+
+    def test_phase_analysis_as_wt_not_normalized(self):
+        analysis = ElementalAnalysis(self.data, drop=["C"])
+        phase_analysis = PhaseConstructor(
+            phases=["CaF2", "CaO",
+                    "SiO2", "Al2O3",
+                    "MgO", "Na2O",
+                    "K2O", "FeO",
+                    "ZnO"],
+            ignore=["O"]).parse(analysis)
+
+        phase_analysis.to_wt(as_pct=False)
+
+        self.assertAlmostEqual(phase_analysis["CaF2"], 13.32234017, 6)
+        phase_analysis.multiply(10)
+        self.assertAlmostEqual(phase_analysis["CaF2"], 133.2234017, 6)
 
 
 class FileLoading(unittest.TestCase):
+    file = ElementalAnalysesFile("test_data/sem.xlsx")
 
     def setUp(self):
         self.phase_constructor = PhaseConstructor(phases=["CaF2", "CaO", "SiO2",
                                                           "Al2O3", "MgO", "Na2O",
                                                           "K2O", "FeO", "ZnO"],
                                                   ignore=["O", "C"])
-        self.file = ElementalAnalysesFile("test_data/sem.xlsx")
 
     def test_all_rows_columns_of_file_are_loaded(self):
         self.assertEqual(len(self.file), 1060)
@@ -73,7 +122,7 @@ class FileLoading(unittest.TestCase):
         data = self.file.phased(self.phase_constructor)
 
         # add information columns
-        info_organizer = InfoOrganizer("test_data/info.xlsx", "sample", ["time", "initial mass"])
+        info_organizer = InfoOrganizer("test_data/info.xlsx", "sample_idx", ["time", "initial mass"])
         data.informal(info_organizer)
 
         # specified information
@@ -89,7 +138,7 @@ class FileLoading(unittest.TestCase):
         data = self.file.phased(self.phase_constructor)
 
         # add information columns
-        info_organizer = InfoOrganizer("test_data/info_failure.xlsx", "sample", ["time", "initial mass", "CaO"])
+        info_organizer = InfoOrganizer("test_data/info_failure.xlsx", "sample_idx", ["time", "initial mass", "CaO"])
 
         with self.assertRaises(KeyError) as e:
             data.informal(info_organizer)

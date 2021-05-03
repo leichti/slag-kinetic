@@ -1,15 +1,21 @@
 import pandas as pd
 import numpy as np
 import re
+import types
 from nemlib.chemical import Molecule, Element, only_elements
 
+"""
+Helper functions and classes to handle elemental and phase analyses. Including data reading from files, mixing-in 
+non-chemical information, calculating phase compositions from  elemental analysis and organizing multiple
+samples and multiple analyses per sample_idx 
+"""
 
 class Analysis(dict):
 
     def __init__(self):
         """
             Base class of analysis based on python's dict
-            inheriting basic functionality like normalize
+            inheriting basic functionality like as_pct
             to PhaseAnalysis and ElementalAnalysis.
         """
         super().__init__()
@@ -31,6 +37,9 @@ class Analysis(dict):
         for key, old_value in self.items():
             self[key] = old_value/total*to
 
+    def sum(self):
+        return sum(self.values())
+
 
 class ElementalAnalysis(Analysis):
 
@@ -43,8 +52,8 @@ class ElementalAnalysis(Analysis):
 
         Parameters
         ----------
-        data : dict analyses of the sample that is represented {"Element" : amount}
-        name : str element of the sample. Can be helpful while debugging
+        data : dict analyses of the sample_idx that is represented {"Element" : amount}
+        name : str element of the sample_idx. Can be helpful while debugging
         as_wt : boolean defines if parsed data comes as wt.-% or mol.-%
         drop : list elements that will be dropped during initialization. May be used
         for elements that are analyzed inaccurate like  C or O in the EDX
@@ -212,13 +221,62 @@ class PhaseConstructor:
 
 class PhaseAnalysis(Analysis):
 
-    def __init__(self):
+    def __init__(self, data=None):
         """
         Inherits from Analysis base class. Not a lot of use yet.
         Helps determining if an analysis is either elemental or phase-based.
         """
         super().__init__()
+        if isinstance(data, types.GeneratorType):
+            data = dict(data)
 
+        if data is not None:
+            for k, v in data.items():
+                self[k] = v
+
+        self.as_wt = False
+
+    def to_wt(self, as_pct=True):
+
+        if self.as_wt:
+            return None
+
+        weight_dict = {}
+        for phase in self.keys():
+            weight_dict[phase] = Molecule(phase).mass*self[phase]
+
+        weight_sum = sum(weight_dict.values())
+        if as_pct is not False:
+            weight_dict = {k: v/weight_sum for k, v in weight_dict.items()}
+
+        for k, v in weight_dict.items():
+            self[k] = v
+
+        self.as_wt = True
+
+    def to_mol(self, as_pct=True):
+
+        if not self.as_wt:
+            return None
+
+        mol_dict = {}
+        for phase in self.keys():
+            mol_dict[phase] = self[phase]/Molecule(phase).mass
+
+        mol_sum = sum(mol_dict.values())
+
+        if as_pct is not False:
+            mol_dict = {k: v/mol_sum for k, v in mol_dict.items()}
+
+        for k, v in mol_dict.items():
+            self[k] = v
+
+        self.as_wt = False
+
+    def multiply(self, multiplier):
+
+        for k,v in self.items():
+            self[k] = v*multiplier
 
 class FileParser:
 
@@ -372,7 +430,7 @@ class AnalysesOrganizer(dict):
 
     def __init__(self, columns):
         """
-        Organizes multiple samples. Each sample is saved as a row in a table-like form.
+        Organizes multiple samples. Each sample_idx is saved as a row in a table-like form.
         """
         super(AnalysesOrganizer, self).__init__()
 
@@ -382,7 +440,7 @@ class AnalysesOrganizer(dict):
 
         Parameters
         ----------
-        sample : str identifier of a sample. E.g. V29P11
+        sample : str identifier of a sample_idx. E.g. V29P11
 
         Returns an empty SampleOrganizer
         -------
@@ -393,13 +451,13 @@ class AnalysesOrganizer(dict):
 
     def add(self, data, sample):
         """
-        Adds data for a given sample. Saved as a list to handle multiple different analyses for the same sample.
+        Adds data for a given sample_idx. Saved as a list to handle multiple different analyses for the same sample_idx.
 
         Parameters
         ----------
-        data : Analysis for a sample. Multiple analyses per sample are possible. E.g. 3xSEM-EDX to reduce the
+        data : Analysis for a sample_idx. Multiple analyses per sample_idx are possible. E.g. 3xSEM-EDX to reduce the
         influence of inhomogeneous samples
-        sample : str identifier of the sample. E.g. V29P11
+        sample : str identifier of the sample_idx. E.g. V29P11
         """
         self[sample].append(data)
 
@@ -425,7 +483,7 @@ class SampleOrganizer(dict):
 
     def __init__(self):
         """
-        Organizes multiple analyses for the same sample. Standard behavior: Returns the information from the
+        Organizes multiple analyses for the same sample_idx. Standard behavior: Returns the information from the
         informal dict or calculates the average value for a given element/compound
         @todo maybe some speed improvements are required in future. Current implementation is slow.
         """

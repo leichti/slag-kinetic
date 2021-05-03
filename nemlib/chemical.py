@@ -1,4 +1,8 @@
 import re
+"""
+Working with elements and phases requires some helper functions and classes to 
+get basic chemical data such as mol weight.
+"""
 
 ELEMENTS = {
     "H": 1.007941,

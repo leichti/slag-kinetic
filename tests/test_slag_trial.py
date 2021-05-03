@@ -1,6 +1,6 @@
 import unittest
 from nemlib.trial import SlagReductionTrial, VxPySelector
-from nemlib.analysis import PhaseConstructor, ElementalAnalysesFile, InfoOrganizer
+from nemlib.analysis import PhaseConstructor, ElementalAnalysesFile, InfoOrganizer, PhaseAnalysis
 
 phase_constructor = PhaseConstructor(phases=["CaF2", "CaO", "SiO2",
                                              "Al2O3", "MgO", "Na2O",
@@ -68,17 +68,24 @@ class SlagTrialTests(unittest.TestCase):
 
     def test_trial_info_failed(self):
         lookup = InfoOrganizer("test_data/trial_info.xlsx", "trial_id", ["initial mass"])
-
         with self.assertRaises(KeyError) as e:
             self.trial.add_info(lookup)
 
-        self.assertTrue("Can't add trial info element initial mass that is "
-                        "already present as sample element." in str(e.exception))
+        self.assertTrue("Can't add trial info column initial mass that is already present as sample_idx column." in str(e.exception))
 
     def test_trial_info_added(self):
         lookup = InfoOrganizer("test_data/trial_info.xlsx", "trial_id", ["initial_mass"])
         self.trial.add_info(lookup)
         self.assertEqual(self.trial["initial_mass"], 2200)
+
+    def test_select_single_trial(self):
+        sample = PhaseAnalysis(self.trial.sample(11))
+
+        self.assertAlmostEqual(sample["CaO"], 0.315907337)
+        self.assertAlmostEqual(sample["SiO2"], 0.392776295)
+
+        sample = PhaseAnalysis(self.trial.sample(11, ["CaO", "SiO2"]))
+        self.assertAlmostEqual(sample.sum(), 0.708683632)
 
 
 unittest.main()
