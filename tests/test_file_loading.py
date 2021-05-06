@@ -122,7 +122,7 @@ class FileLoading(unittest.TestCase):
         data = self.file.phased(self.phase_constructor)
 
         # add information columns
-        info_organizer = InfoOrganizer("test_data/info.xlsx", "sample_idx", ["time", "initial mass"])
+        info_organizer = InfoOrganizer("test_data/info.xlsx", "sample", ["time", "initial mass"])
         data.informal(info_organizer)
 
         # specified information
@@ -134,11 +134,19 @@ class FileLoading(unittest.TestCase):
         self.assertAlmostEqual(data["V18P1"]["time"], 0, 5)
         self.assertAlmostEqual(data["V18P1"]["initial mass"], 0, 5)
 
+        # get phase columns
+        compounds = ["CaO", "SiO2", "Al2O3", "FeO",
+                     "CaF2", "ZnO", "K2O"]
+        for compound in compounds:
+            self.assertIn(compound, data["V28P0"].phases())
+
+
+
     def test_CaO_informal_raises(self):
         data = self.file.phased(self.phase_constructor)
 
         # add information columns
-        info_organizer = InfoOrganizer("test_data/info_failure.xlsx", "sample_idx", ["time", "initial mass", "CaO"])
+        info_organizer = InfoOrganizer("test_data/info_failure.xlsx", "sample", ["time", "initial mass", "CaO"])
 
         with self.assertRaises(KeyError) as e:
             data.informal(info_organizer)

@@ -28,7 +28,7 @@ class SlagTrialTests(unittest.TestCase):
 
     def test_all_compounds_parsed(self):
         should_contain = ["CaF2", "CaO", "SiO2", "Al2O3",
-                          "MgO", "Na2O", "K2O", "FeO", "ZnO"]
+                          "MgO", "Na2O", "K2O", "FeO", "ZnO", "time"]
         parsed_list = list(self.trial.keys())
         for compound in should_contain:
             self.assertIn(compound, parsed_list)
@@ -37,6 +37,16 @@ class SlagTrialTests(unittest.TestCase):
         cao = self.trial["CaO"]
         self.assertEqual(cao[11], self.phased_data["V29P12"]["CaO"])
         self.assertEqual(cao[0], self.phased_data["V29P1"]["CaO"])
+
+        time = self.trial["time"]
+        self.assertEqual(time[11], 75)
+        self.assertEqual(time[0], 0)
+
+    def test_samples_multiplication(self):
+        self.trial.multiply(100)
+        cao = self.trial["CaO"]
+        self.assertEqual(cao[11], self.phased_data["V29P12"]["CaO"]*100)
+        self.assertEqual(cao[0], self.phased_data["V29P1"]["CaO"]*100)
 
         time = self.trial["time"]
         self.assertEqual(time[11], 75)

@@ -31,7 +31,7 @@ class VxPySelector(Selector):
 
         Parameters
         ----------
-        data : data from which samples of one trial should be extracted. Keys must have the VxPy naming convention
+        data : SampleOrganizer from which samples of one trial should be extracted. Keys must have the VxPy naming convention
         args : args
         kwargs : kwargs
 
@@ -95,6 +95,8 @@ class SelectorTrialParser:
         trial : Trial to assemble.
         analysis : SampleOrganizer from which we extract data.
         """
+        trial.phases = analysis.phases()
+        trial.sample_info = analysis.informal_keys()
         for phase in analysis.phases():
             trial[phase].append(analysis[phase])
 
@@ -128,6 +130,8 @@ class Trial(dict):
         super().__init__()
         self.id = None
         self.info = TrialInfo()
+        self.sample_info = []
+        self.phases = []
         pass
 
     def __missing__(self, column):
@@ -186,8 +190,23 @@ class Trial(dict):
             yield k, self[k][sample_idx]
 
     def sample_analysis(self, sample_idx, limit_to=None):
+        if limit_to is None:
+            limit_to = list(self.phases)
         return PhaseAnalysis(self.sample(sample_idx, limit_to))
 
+    def sample_analyses(self, limit_to=None):
+        first_key = next(iter(self.phases))
+        for idx, _ in enumerate(self[first_key]):
+            yield self.sample_analysis(idx, limit_to)
+
+    def multiply(self, factor):
+        for key in self.phases:
+            column = self[key]
+            self[key] = [v*factor for v in column]
+
+    def multiply_sample(self, factor, sample):
+        for key in self.phases:
+            self[key][sample] *= factor
 
 
 class SlagReductionTrial(Trial):

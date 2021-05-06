@@ -473,6 +473,7 @@ class AnalysesOrganizer(dict):
         for sample in self.keys():
             self[sample].informal = info_organizer.get(sample)
 
+        # take the last sample and check if everything is fine
         for informal_key in self[sample].informal.keys():
             sample_keys = self[sample].phases()
             if informal_key in sample_keys:
