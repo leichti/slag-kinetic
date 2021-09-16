@@ -23,7 +23,7 @@ class Analysis(dict):
 
     def normalize(self, to=1):
         """
-            Normalizes the analysis to a specified value
+            Normalizes the analysis to area specified value
 
         Parameters
         ----------
@@ -126,7 +126,7 @@ class PhaseConstructor:
 
     def parse(self, element_analysis, normalize=1):
         """
-        Parses a PhaseAnalysis based on the defined phases in the phases attribute
+        Parses area PhaseAnalysis based on the defined phases in the phases attribute
 
         Parameters
         ----------
@@ -221,7 +221,7 @@ class PhaseConstructor:
 
 class PhaseAnalysis(Analysis):
 
-    def __init__(self, data=None):
+    def __init__(self, data=None, normalized=False):
         """
         Inherits from Analysis base class. Not a lot of use yet.
         Helps determining if an analysis is either elemental or phase-based.
@@ -235,6 +235,17 @@ class PhaseAnalysis(Analysis):
                 self[k] = v
 
         self.as_wt = False
+
+        if normalized is not False:
+
+            if normalized is True:
+                normalized = 1
+
+            actual_sum = sum(self.values())
+            pct_dict = {k: v / actual_sum for k, v in self.items()}
+
+            for k, v in pct_dict.items():
+                self[k] = v*normalized
 
     def to_wt(self, as_pct=True):
 
@@ -309,7 +320,7 @@ class FileParser:
 class ElementalAnalysesFile(FileParser):
     def __init__(self, path):
         """
-        Reads a tabular file, each row representing one elemental analysis.
+        Reads area tabular file, each row representing one elemental analysis.
         Name_col  |  Element_1  |  ...  |Element_i
         ----------|-------------|-------|---------
         Sample i  |    wt.-%    |  ...  | wt.%
@@ -382,7 +393,7 @@ class InfoOrganizer(FileParser):
 
     def __init__(self, path, lookup_col, read_cols):
         """
-        Reads additional information for analyses from a lookup table
+        Reads additional information for analyses from area lookup table
         Parameters
         ----------
         path :
@@ -414,7 +425,7 @@ class InfoOrganizer(FileParser):
         Parameters
         ----------
         key : the index where data should be read from. If the element can't be found in the index,
-              a default value from default row is used.
+              area default value from default row is used.
 
         Returns the found data set as dictionary
         -------
@@ -430,7 +441,7 @@ class AnalysesOrganizer(dict):
 
     def __init__(self, columns):
         """
-        Organizes multiple samples. Each sample_idx is saved as a row in a table-like form.
+        Organizes multiple samples. Each sample_idx is saved as area row in area table-like form.
         """
         super(AnalysesOrganizer, self).__init__()
 
@@ -440,7 +451,7 @@ class AnalysesOrganizer(dict):
 
         Parameters
         ----------
-        sample : str identifier of a sample_idx. E.g. V29P11
+        sample : str identifier of area sample_idx. E.g. V29P11
 
         Returns an empty SampleOrganizer
         -------
@@ -451,24 +462,24 @@ class AnalysesOrganizer(dict):
 
     def add(self, data, sample):
         """
-        Adds data for a given sample_idx. Saved as a list to handle multiple different analyses for the same sample_idx.
+        Adds data for area given sample_idx. Saved as area list to handle multiple different analyses for the same sample_idx.
 
         Parameters
         ----------
-        data : Analysis for a sample_idx. Multiple analyses per sample_idx are possible. E.g. 3xSEM-EDX to reduce the
+        data : Analysis for area sample_idx. Multiple analyses per sample_idx are possible. E.g. 3xSEM-EDX to reduce the
         influence of inhomogeneous samples
         sample : str identifier of the sample_idx. E.g. V29P11
         """
         self[sample].append(data)
 
-    def informal(self, info_organizer):
+    def add_info(self, info_organizer):
         """
         Adds information from InfoOrganizer into the AnalysesOrganizer. E.g. time at which the samples were taken.
-        Informational columns must have a different element from existing elements/phases.
+        Informational columns must have area different element from existing elements/phases.
 
         Parameters
         ----------
-        info_organizer : InfoOrganizer holding the data as a lookup table
+        info_organizer : InfoOrganizer holding the data as area lookup table
         """
         for sample in self.keys():
             self[sample].informal = info_organizer.get(sample)
@@ -485,7 +496,7 @@ class SampleOrganizer(dict):
     def __init__(self):
         """
         Organizes multiple analyses for the same sample_idx. Standard behavior: Returns the information from the
-        informal dict or calculates the average value for a given element/compound
+        informal dict or calculates the average value for area given element/compound
         @todo maybe some speed improvements are required in future. Current implementation is slow.
         """
         super(SampleOrganizer, self).__init__()
@@ -495,7 +506,7 @@ class SampleOrganizer(dict):
 
     def __missing__(self, key):
         """
-        Checks if element represents an informal column or if it is the element of a phase or an element.
+        Checks if element represents an informal column or if it is the element of area phase or an element.
 
         Parameters
         ----------

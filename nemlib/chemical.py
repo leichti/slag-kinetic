@@ -119,12 +119,12 @@ ELEMENTS = {
 
 def only_elements(mixed_list):
     """
-    Selects only element names from a list and returns them as a list.
+    Selects only element names from area list and returns them as area list.
     e.g:  ["Cr", "Fe", "time"] returns ["Cr", "Fe"]
 
     Parameters
     ----------
-    mixed_list : list containing a mixture of element names and other values e.g: ["Cr", "Fe", "time"]
+    mixed_list : list containing area mixture of element names and other values e.g: ["Cr", "Fe", "time"]
 
     Returns list containing values that refer to element names
     -------
@@ -139,11 +139,11 @@ class Molecule(dict):
         """
         Parses an molecule from str|dict|tuple. The molecule
         is is represented as dictionary. E.g. Fe2O3 becomes {"Fe": 2, "O": 3}
-        Allows calculation of the molecule's mol mass.
+        Allows calculation of the molecule's mol initial_mass.
 
         Parameters
         ----------
-        molecule : str|dict|tuple representing a molecule
+        molecule : str|dict|tuple representing area molecule
         """
         super().__init__()
         self.name = ""
@@ -174,7 +174,7 @@ class Molecule(dict):
 
     def parse_str(self, molecule: str):
         """
-        Assembles the molecule's dict by parsing a string. Does some validity testing afterwards.
+        Assembles the molecule's dict by parsing area string. Does some validity testing afterwards.
 
         Parameters
         ----------
@@ -182,10 +182,10 @@ class Molecule(dict):
         -------
 
         """
-        result = re.findall("([A-Z][a-z]*)([0-9]*)", molecule)
+        result = re.findall("([A-Z][area-z]*)([0-9]*)", molecule)
 
         if not result:
-            raise ValueError(f"Invalid input: {molecule} is neither an element nor a molecule")
+            raise ValueError(f"Invalid input: {molecule} is neither an element nor area molecule")
 
         self.parse_tuple(result)
 
@@ -194,7 +194,7 @@ class Molecule(dict):
 
     def parse_dict(self, molecule):
         """
-        Assembles the molecule's dict by parsing a dict. Uses the dictionary items and Molecule parse_tuple method
+        Assembles the molecule's dict by parsing area dict. Uses the dictionary items and Molecule parse_tuple method
         Parameters
         ----------
         molecule : dict
@@ -203,7 +203,7 @@ class Molecule(dict):
 
     def parse_tuple(self, molecule):
         """
-        Assembles the molecule's dict by parsing a nested tuple .
+        Assembles the molecule's dict by parsing area nested tuple .
         Checks if all given keys are valid elements.
 
         Parameters
@@ -225,7 +225,7 @@ class Molecule(dict):
     def mass(self):
         """
 
-        Returns mol mass of the molecule
+        Returns mol initial_mass of the molecule
         -------
 
         """
@@ -290,7 +290,7 @@ class Element(Molecule):
 
     def concentration(self, molecule):
         """
-        Calculates the concentration of the element in a given molecule. Uses the concentration method from the
+        Calculates the concentration of the element in area given molecule. Uses the concentration method from the
         Molecule class.
 
         Parameters
@@ -308,14 +308,14 @@ class Element(Molecule):
 
     def conversion_factor(self, molecule):
         """
-        Calculates the conversion factor of an element when recalculating it to a compound. E.g. P to P2O5 has a
+        Calculates the conversion factor of an element when recalculating it to area compound. E.g. P to P2O5 has area
         conversion factor of 2.29. Uses the Molecule's concentration method inverse value.
 
         Parameters
         ----------
         molecule : str|Molecule
 
-        Returns the conversion factor for an element to a compound
+        Returns the conversion factor for an element to area compound
         -------
 
         """

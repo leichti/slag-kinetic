@@ -8,7 +8,7 @@ phase_constructor = PhaseConstructor(phases=["CaF2", "CaO", "SiO2",
                                      ignore=["O", "C"])
 phased_data = ElementalAnalysesFile("test_data/sem.xlsx").phased(phase_constructor)
 info = InfoOrganizer("test_data/info.xlsx", "sample", ["time", "initial mass"])
-phased_data.informal(info)
+phased_data.add_info(info)
 
 
 class SlagTrialTests(unittest.TestCase):
@@ -61,7 +61,7 @@ class SlagTrialTests(unittest.TestCase):
     def test_info_failure(self):
         failed_info = InfoOrganizer("test_data/info_failure.xlsx", "sample", ["time", "initial mass", "id"])
         self.phased_data = ElementalAnalysesFile("test_data/sem.xlsx").phased(phase_constructor)
-        self.phased_data.informal(failed_info)
+        self.phased_data.add_info(failed_info)
 
         with self.assertRaises(KeyError) as context:
             self.trial = SlagReductionTrial(data=VxPySelector("V29")(self.phased_data))
@@ -75,6 +75,15 @@ class SlagTrialTests(unittest.TestCase):
         self.trial.drop(0)
         trial_id = self.trial["id"]
         self.assertEqual(trial_id[0], "P2")
+
+    def test_sample_drop_multiple(self):
+        trial_id = self.trial["id"]
+        self.assertEqual(trial_id[0], "P1")
+
+        self.trial.drop_multiple([0,2])
+        trial_id = self.trial["id"]
+        self.assertEqual(trial_id[0], "P2")
+        self.assertEqual(trial_id[1], "P4")
 
     def test_trial_info_failed(self):
         lookup = InfoOrganizer("test_data/trial_info.xlsx", "trial_id", ["initial mass"])
@@ -97,5 +106,11 @@ class SlagTrialTests(unittest.TestCase):
         sample = PhaseAnalysis(self.trial.sample(11, ["CaO", "SiO2"]))
         self.assertAlmostEqual(sample.sum(), 0.708683632)
 
+
+    def test_normalization(self):
+        not_normalized = self.trial.sample_analysis(1)
+        normalized_to_100 = self.trial.sample_analysis(1, normalized=100)
+
+        self.assertEqual(not_normalized["CaO"]*100, normalized_to_100["CaO"])
 
 unittest.main()
