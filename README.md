@@ -78,6 +78,17 @@ For figure generation and model comparisons, see `slag_trials_2021/setup.py`:
 - `MetalBathSeries()` sets up common loaders and assemblers
 - `SummaryPlot` and `DetailPlot` create overview and per‑trial plots (including deviations and reaction‑rate vs composition)
 
+## Figures
+
+Example detail plots (model vs experiment and residuals):
+
+![Detail plots: ZnO mol-% vs time and residuals](slag_trials_2021/plots/detail_plots.svg)
+
+To reproduce or extend the figures used in the paper:
+- Use `slag_trials_2021/setup.py` and the `DetailPlot`/`SummaryPlot` helpers.
+- Adjust trial IDs (e.g., `V29`, `V27`), exclusions, and y0 alignment as in the paper.
+- Save figures (e.g., SVG/PNG) and add them under `slag_trials_2021/plots/` to display here.
+
 ## Tests
 Run unit tests:
 
